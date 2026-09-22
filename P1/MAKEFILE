@@ -1,0 +1,6 @@
+p1.out: p1.c
+	gcc -o p1.out p1.c
+
+clean:
+	rm -f p1.out
+	
