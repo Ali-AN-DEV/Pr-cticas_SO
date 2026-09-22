@@ -107,9 +107,18 @@ void ListarFicherosAbiertos(void) {
 /*********************************************/
 /*************COMANDOS DEL SHELL************************/
   
-void Cmd_autores()
-{
-  printf ("Los autores del shell....\n");
+void Cmd_autores(char *tr[]) {
+  const char *nombres[] = { "Ruben Varela Tarrio", "Nombre2" };
+    const char *logins[]  = { "ruben.varela.tarrio@udc.es", "Login2" };
+    int i;
+ 
+    if (tr[0] != NULL && !strcmp(tr[0], "-l")) {
+        for (i = 0; i < 2; i++) printf("%s\n", logins[i]);
+    } else if (tr[0] != NULL && !strcmp(tr[0], "-n")) {
+        for (i = 0; i < 2; i++) printf("%s\n", nombres[i]);
+    } else {
+        for (i = 0; i < 2; i++) printf("%s : %s\n", nombres[i], logins[i]);
+    }
 }
 
 void Cmd_exec (char *tr[])
@@ -232,7 +241,7 @@ void DecidirComando(char *tr[])
   if (!strcmp(tr[0],"fin")) exit(0);
   else if (!strcmp(tr[0],"quit")) exit(0);
   else if (!strcmp(tr[0],"exit")) exit(0);	
-  else if (!strcmp(tr[0],"autores")) Cmd_autores();
+  else if (!strcmp(tr[0],"autores")) Cmd_autores(tr+1);
   else if (!strcmp(tr[0],"exec")) Cmd_exec(tr+1);
   else if (!strcmp(tr[0],"pplano")) Cmd_pplano(tr+1);
   else if (!strcmp(tr[0],"splano")) Cmd_splano(tr+1);
