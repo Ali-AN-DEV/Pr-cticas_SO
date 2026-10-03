@@ -4,6 +4,9 @@
 #include <string.h>
 #include <sys/wait.h>
 #include <fcntl.h>
+#include <sys/stat.h>
+#include <dirent.h>
+#include <errno.h>
 
 #define MAXENTRADA  2048
 #define MAXNOMBRE 1024
@@ -31,6 +34,13 @@ void MostrarDirActual()
        printf ("%s\n",dir);
 }
 
+int EsDirectorio(const char *dir)
+{
+    struct stat s;
+    if (lstat(dir, &s) == -1)   /* si no puedo acceder, para mi no es directorio */
+        return 0;
+    return S_ISDIR(s.st_mode);
+}
 
 int ComprobarSegundoPlano (char *tr[])
 {
@@ -225,6 +235,114 @@ void Cmd_close(char *tr[])
     printf("Cerrado descriptor %d\n", df);
 }
 
+void Cmd_dup(char *tr[])
+{
+    int df, duplicado;
+    char aux[MAXNOMBRE + 32]; // buffer para el nombre del fichero duplicado
+    const char *nombreOriginal;
+
+    if (tr[0] == NULL || (df = atoi(tr[0])) < 0) {
+        ListarFicherosAbiertos();
+        return;
+    }
+
+    if (df < numEntradas && tabla[df].abierto)
+        nombreOriginal = tabla[df].nombre;
+    else
+        nombreOriginal = "?";
+
+    if ((duplicado = dup(df)) == -1) {
+        perror("Imposible duplicar descriptor");
+        return;
+    }
+
+    snprintf(aux, sizeof(aux), "dup %d (%s)", df, nombreOriginal);
+    AnadirFichero(duplicado, aux, 0);
+    printf("df=%d fichero=%s\n", duplicado, aux);
+}
+
+void Cmd_lseek(char *tr[])
+{
+    int df;
+    off_t pos, resultado;
+    int whence;
+
+    if (tr[0] == NULL || tr[1] == NULL || tr[2] == NULL) {
+        fprintf(stderr, "uso: lseek df pos ref\n");
+        return;
+    }
+    df = atoi(tr[0]);
+    pos = atoll(tr[1]);
+
+    if (!strcmp(tr[2], "SEEK_SET")) whence = SEEK_SET;
+    else if (!strcmp(tr[2], "SEEK_CUR")) whence = SEEK_CUR;
+    else if (!strcmp(tr[2], "SEEK_END")) whence = SEEK_END;
+    else { fprintf(stderr, "lseek: referencia desconocida %s\n", tr[2]); return; }
+
+    resultado = lseek(df, pos, whence);
+    if (resultado == -1)
+        perror("Imposible posicionar el descriptor");
+    else
+        printf("%lld\n", (long long) resultado);
+}
+
+void Cmd_readstr(char *tr[])
+{
+    int df, cont, leidos;
+    char *buffer;
+
+    if (tr[0] == NULL || tr[1] == NULL) { fprintf(stderr, "uso: readstr df cont\n"); return; }
+    df = atoi(tr[0]);
+    cont = atoi(tr[1]);
+    if (cont < 0) { fprintf(stderr, "readstr: cantidad invalida\n"); return; }
+
+    buffer = malloc(cont + 1);
+    if (buffer == NULL) { perror("malloc"); return; }
+
+    leidos = read(df, buffer, cont);
+    if (leidos == -1) {
+        perror("Imposible leer del descriptor");
+    } else {
+        buffer[leidos] = '\0';
+        printf("%s\n", buffer);
+    }
+    free(buffer);
+}
+
+void Cmd_writestr(char *tr[])
+{
+    ssize_t escritos;
+    size_t len;
+
+    if (tr[0] == NULL || tr[1] == NULL) { fprintf(stderr, "uso: writestr df str\n"); return; }
+    len = strlen(tr[1]);
+    escritos = write(atoi(tr[0]), tr[1], len);
+    if (escritos == -1)
+        perror("Imposible escribir en el descriptor");
+    else if ((size_t) escritos < len)
+        fprintf(stderr, "writestr: escritura parcial (%zd de %zu bytes)\n", escritos, len);
+}
+
+void Cmd_makefile(char *tr[])
+{
+    int i, fd;
+    for (i = 0; tr[i] != NULL; i++) {
+        fd = open(tr[i], O_CREAT | O_WRONLY | O_TRUNC, 0666);
+        if (fd == -1) {
+            fprintf(stderr, "makefile: %s: %s\n", tr[i], strerror(errno));
+            continue;
+        }
+        close(fd);
+    }
+}
+
+void Cmd_makedir(char *tr[])
+{
+    int i;
+    for (i = 0; tr[i] != NULL; i++)
+        if (mkdir(tr[i], 0777) == -1)
+            fprintf(stderr, "makedir: %s: %s\n", tr[i], strerror(errno));
+}
 
 
 /** int open(const char *path, int flags, ...
@@ -250,6 +368,13 @@ void DecidirComando(char *tr[])
   else if (!strcmp(tr[0],"pid")) Cmd_pid (tr[1]);
   else if (!strcmp(tr[0], "open"))  Cmd_open(tr + 1); //nuevo
   else if (!strcmp(tr[0], "listopen")) ListarFicherosAbiertos(); //nuevo
+  else if (!strcmp(tr[0], "close")) Cmd_close(tr + 1); //nuevo
+  else if (!strcmp(tr[0], "dup")) Cmd_dup(tr + 1); //nuevo
+  else if (!strcmp(tr[0], "lseek")) Cmd_lseek(tr + 1); //nuevo
+  else if (!strcmp(tr[0], "readstr")) Cmd_readstr(tr + 1); //nuevo
+  else if (!strcmp(tr[0], "writestr")) Cmd_writestr(tr + 1); //nuevo
+  else if (!strcmp(tr[0], "makefile")) Cmd_makefile(tr + 1); //nuevo
+  else if (!strcmp(tr[0], "makedir"))  Cmd_makedir(tr + 1); //nuevo
 
   else Cmd_pplano(tr);
 }
