@@ -1,3 +1,10 @@
+/*
+ * Sistemas Operativos - P1
+ * Autores:
+ *   Ruben Varela Tarrio - ruben.varela.tarrio@udc.es
+ *   Ali Abu-afash Nayef - ali.nayef@udc.es
+ */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -117,9 +124,9 @@ void ListarFicherosAbiertos(void) {
 /*********************************************/
 /*************COMANDOS DEL SHELL************************/
   
-void Cmd_autores(char *tr[]) {
-  const char *nombres[] = { "Ruben Varela Tarrio", "Nombre2" };
-    const char *logins[]  = { "ruben.varela.tarrio@udc.es", "Login2" };
+void Cmd_authors(char *tr[]) {
+  const char *nombres[] = { "Ruben Varela Tarrio", "Ali Abu-afash Nayef" };
+    const char *logins[]  = { "ruben.varela.tarrio@udc.es", "ali.nayef@udc.es" };
     int i;
  
     if (tr[0] != NULL && !strcmp(tr[0], "-l")) {
@@ -345,11 +352,6 @@ void Cmd_makedir(char *tr[])
 }
 
 
-/** int open(const char *path, int flags, ...
- mode_t mode  );**/
-
-
-
 
 /**************************SHELL**************************/
 void DecidirComando(char *tr[])
@@ -359,7 +361,8 @@ void DecidirComando(char *tr[])
   if (!strcmp(tr[0],"fin")) exit(0);
   else if (!strcmp(tr[0],"quit")) exit(0);
   else if (!strcmp(tr[0],"exit")) exit(0);	
-  else if (!strcmp(tr[0],"autores")) Cmd_autores(tr+1);
+  else if (!strcmp(tr[0],"bye")) exit(0);	//nuevo
+  else if (!strcmp(tr[0],"authors")) Cmd_authors(tr+1);
   else if (!strcmp(tr[0],"exec")) Cmd_exec(tr+1);
   else if (!strcmp(tr[0],"pplano")) Cmd_pplano(tr+1);
   else if (!strcmp(tr[0],"splano")) Cmd_splano(tr+1);
@@ -403,8 +406,8 @@ int main(int argc, char *argv[], char *ent[])
 
    while (1){
       printf ("-> ");
-      fgets(entrada,MAXENTRADA,stdin);
+      fgets(entrada,MAXENTRADA,stdin); //si pulsas ctrl+d en la terminal da un bucle raro
       ProcesarEntrada(entrada);
    }
 }
-//prueba
+
