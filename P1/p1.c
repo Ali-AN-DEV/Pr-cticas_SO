@@ -14,6 +14,8 @@
 #include <sys/stat.h>
 #include <dirent.h>
 #include <errno.h>
+#include <time.h>        //para date
+#include <sys/utsname.h> //para sysinfo
 
 #define MAXENTRADA  2048
 #define MAXNOMBRE 1024
@@ -351,9 +353,61 @@ void Cmd_makedir(char *tr[])
             fprintf(stderr, "makedir: %s: %s\n", tr[i], strerror(errno));
 }
 
+void Cmd_date(char *arg[])
+{
+    time_t t = time(NULL);
+    struct tm *tm = localtime(&t);
+    char buf[64];
+
+    if (tm == NULL) { 
+        perror("Imposible obtener la hora"); 
+        return; 
+    }   
+
+    if (arg[0] == NULL || !strcmp(arg[0], "-t")) {                                 
+        strftime(buf, sizeof(buf), "%H:%M:%S", tm);
+        printf("%s\n", buf);
+    }
+
+    if (arg[0] == NULL || !strcmp(arg[0], "-d")) {
+        strftime(buf, sizeof(buf), "%d/%m/%Y", tm);
+        printf("%s\n", buf);
+    }
+}
+
+void Cmd_sysinfo(char *arg[])
+{
+    struct utsname u; 
+
+    if (uname(&u) == -1 ) {
+        perror("Imposible obtener información del sistema");
+        return;
+    }
+    printf("%s (%s), OS: %s-%s-%s\n", 
+        u.nodename, u.machine, u.sysname, u.release, u.version); 
+}
 
 
 /**************************SHELL**************************/
+
+
+/* v3
+*static struct COMANDO C[]={ no declaro dimension, que la coge de la inicializacion
+*{"fin",Cmd_fin},
+*{"exit",Cmd_fin},
+*{"quit",Cmd_fin},
+*{"pid",Cmd_pid},
+*{"pwd", Cmd_pwd},
+*{"chdir",Cmd_chdir},
+*{"autores",Cmd_autores},
+*{"exec",Cmd_exec},
+*{"pplano",Cmd_pplano},
+*{"splano",Cmd_splano},
+*{NULL,NULL},             NULL marca el final del array
+*};
+*/ 
+
+
 void DecidirComando(char *tr[])
 {
   if (tr[0]==NULL)  /*por si cambiamos lo de TroearCadena==0*/
@@ -378,6 +432,8 @@ void DecidirComando(char *tr[])
   else if (!strcmp(tr[0], "writestr")) Cmd_writestr(tr + 1); //nuevo
   else if (!strcmp(tr[0], "makefile")) Cmd_makefile(tr + 1); //nuevo
   else if (!strcmp(tr[0], "makedir"))  Cmd_makedir(tr + 1); //nuevo
+  else if (!strcmp(tr[0], "date")) Cmd_date(tr+1); //nueuvo
+  else if (!strcmp(tr[0], "sysinfo")) Cmd_sysinfo(tr + 1); 
 
   else Cmd_pplano(tr);
 }
