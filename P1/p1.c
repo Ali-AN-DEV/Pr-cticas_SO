@@ -16,9 +16,18 @@
 #include <errno.h>
 #include <time.h>        //para date
 #include <sys/utsname.h> //para sysinfo
+#include <pwd.h> //para obtner nombre de usuario a partir del uid
+#include <grp.h> //para obtner nombre de grupo a partir del gid
+#include <limits.h> //para PATH_MAX
 
 #define MAXENTRADA  2048
 #define MAXNOMBRE 1024
+#define OPT_LONG 0x01
+#define OPT_LINK 0x02
+#define OPT_ACC 0x04
+#define OPT_HID  0x08
+#define OPT_RECA 0x10
+#define OPT_RECB 0x20
 
 //Lista 
 typedef struct tFichero {
@@ -387,6 +396,177 @@ void Cmd_sysinfo(char *arg[])
         u.nodename, u.machine, u.sysname, u.release, u.version); 
 }
 
+char LetraTF (mode_t m)
+{
+     switch (m&S_IFMT) { /*and bit a bit con los bits de formato,0170000 */
+        case S_IFSOCK: return 's'; /*socket */
+        case S_IFLNK: return 'l'; /*symbolic link*/
+        case S_IFREG: return '-'; /* fichero normal*/
+        case S_IFBLK: return 'b'; /*block device*/
+        case S_IFDIR: return 'd'; /*directorio */ 
+        case S_IFCHR: return 'c'; /*char device*/
+        case S_IFIFO: return 'p'; /*pipe*/
+        default: return '?'; /*desconocido, no deberia aparecer*/
+     }
+}
+
+char * ConvierteModo (mode_t m, char *permisos)
+{
+    strcpy (permisos,"---------- ");
+    
+    permisos[0]=LetraTF(m);
+    if (m&S_IRUSR) permisos[1]='r';    /*propietario*/
+    if (m&S_IWUSR) permisos[2]='w';
+    if (m&S_IXUSR) permisos[3]='x';
+    if (m&S_IRGRP) permisos[4]='r';    /*grupo*/
+    if (m&S_IWGRP) permisos[5]='w';
+    if (m&S_IXGRP) permisos[6]='x';
+    if (m&S_IROTH) permisos[7]='r';    /*resto*/
+    if (m&S_IWOTH) permisos[8]='w';
+    if (m&S_IXOTH) permisos[9]='x';
+    if (m&S_ISUID) permisos[3]='s';    /*setuid, setgid y stickybit*/
+    if (m&S_ISGID) permisos[6]='s';
+    if (m&S_ISVTX) permisos[9]='t';
+    
+    return permisos;
+}
+
+void ImprimirInfoObjeto(const char *ruta, const char *nombreMostrar, int flags)
+{
+    struct stat s;
+    char permisos[11];
+    struct passwd *pw;
+    struct group  *gr;
+    char tbuf[32];
+    time_t t;
+ 
+    if (lstat(ruta, &s) == -1) {
+        fprintf(stderr, " ****error al acceder a %s:%s\n", ruta, strerror(errno));
+        return;
+    }
+ 
+    if (!(flags & OPT_LONG)) {
+        printf("%8ld  %s\n", (long) s.st_size, nombreMostrar);
+    } else {
+        ConvierteModo(s.st_mode, permisos);
+        pw = getpwuid(s.st_uid);
+        gr = getgrgid(s.st_gid);
+        t = (flags & OPT_ACC) ? s.st_atime : s.st_ctime;
+        strftime(tbuf, sizeof(tbuf), "%Y/%m/%d-%H:%M", localtime(&t));
+        printf("%s%4ld (%8ld)%9s%9s %s%9ld %s\n",
+               tbuf, (long) s.st_nlink, (long) s.st_ino,
+               pw ? pw->pw_name : "?", gr ? gr->gr_name : "?",
+               permisos, (long) s.st_size, nombreMostrar);
+    }
+ 
+    if ((flags & OPT_LINK) && S_ISLNK(s.st_mode)) {
+        char destino[PATH_MAX];
+        ssize_t n = readlink(ruta, destino, sizeof(destino) - 1);
+        if (n != -1) {
+            destino[n] = '\0';
+            printf("    -> %s\n", destino);
+        }
+    }
+}
+
+void Cmd_listfile(char *tr[])
+{
+    int i, flags = 0;
+
+    for (i = 0; tr[i] != NULL; i++) {
+        if      (!strcmp(tr[i], "-long")) flags |= OPT_LONG;
+        else if (!strcmp(tr[i], "-link")) flags |= OPT_LINK;
+        else if (!strcmp(tr[i], "-acc"))  flags |= OPT_ACC;
+        else break;
+    }
+    if (tr[i] == NULL) { fprintf(stderr, "uso: listfile [-long][-link][-acc] name...\n"); return; }
+    for (; tr[i] != NULL; i++)
+        ImprimirInfoObjeto(tr[i], tr[i], flags);
+}
+
+void RecursarEnSubdirectorios(const char *ruta, char *nombres[], int n, int flags);
+
+void ListarDirectorioRec(const char *ruta, int flags)
+{
+    DIR *d;
+    struct dirent *ent;
+    char **nombres = NULL;
+    int n = 0, capacidad = 0, i;
+    char hijo[PATH_MAX];
+ 
+    d = opendir(ruta);
+    if (d == NULL) {
+        fprintf(stderr, " ****error al acceder a %s:%s\n", ruta, strerror(errno));
+        return;
+    }
+ 
+    while ((ent = readdir(d)) != NULL) {
+        if (ent->d_name[0] == '.' && !(flags & OPT_HID))
+            continue;
+        if (n == capacidad) {
+            capacidad = capacidad ? capacidad * 2 : 8;
+            nombres = realloc(nombres, capacidad * sizeof(char *));
+            if (nombres == NULL) { perror("realloc"); closedir(d); return; }
+        }
+        nombres[n] = strdup(ent->d_name);
+        if (nombres[n] == NULL) { perror("strdup"); break; }
+        n++;
+    }
+    closedir(d);
+ 
+    if (flags & OPT_RECB)
+        RecursarEnSubdirectorios(ruta, nombres, n, flags);
+ 
+    printf("************%s\n", ruta);
+    for (i = 0; i < n; i++) {
+        snprintf(hijo, sizeof(hijo), "%s/%s", ruta, nombres[i]);
+        ImprimirInfoObjeto(hijo, nombres[i], flags);
+    }
+ 
+    if (flags & OPT_RECA)
+        RecursarEnSubdirectorios(ruta, nombres, n, flags);
+ 
+    for (i = 0; i < n; i++) free(nombres[i]);
+    free(nombres);
+}
+
+void RecursarEnSubdirectorios(const char *ruta, char *nombres[], int n, int flags)
+{
+    int i;
+    char hijo[PATH_MAX];
+ 
+    for (i = 0; i < n; i++) {
+        if (!strcmp(nombres[i], ".") || !strcmp(nombres[i], ".."))
+            continue;
+        snprintf(hijo, sizeof(hijo), "%s/%s", ruta, nombres[i]);
+        if (EsDirectorio(hijo))
+            ListarDirectorioRec(hijo, flags);
+    }
+}
+
+void Cmd_list(char *tr[])
+{
+    int i, flags = 0;
+
+    for (i = 0; tr[i] != NULL; i++) {
+        if      (!strcmp(tr[i], "-long")) flags |= OPT_LONG;
+        else if (!strcmp(tr[i], "-link")) flags |= OPT_LINK;
+        else if (!strcmp(tr[i], "-acc"))  flags |= OPT_ACC;
+        else if (!strcmp(tr[i], "-hid"))  flags |= OPT_HID;
+        else if (!strcmp(tr[i], "-reca")) flags |= OPT_RECA;
+        else if (!strcmp(tr[i], "-recb")) flags |= OPT_RECB;
+        else break;
+    }
+    if (tr[i] == NULL) { fprintf(stderr, "uso: list [opciones] name...\n"); return; }
+
+    for (; tr[i] != NULL; i++) {
+        if (EsDirectorio(tr[i]))
+            ListarDirectorioRec(tr[i], flags);
+        else
+            ImprimirInfoObjeto(tr[i], tr[i], flags);
+    }
+}
+
 
 /**************************SHELL**************************/
 
@@ -434,6 +614,8 @@ void DecidirComando(char *tr[])
   else if (!strcmp(tr[0], "makedir"))  Cmd_makedir(tr + 1); //nuevo
   else if (!strcmp(tr[0], "date")) Cmd_date(tr+1); //nueuvo
   else if (!strcmp(tr[0], "sysinfo")) Cmd_sysinfo(tr + 1); 
+  else if (!strcmp(tr[0], "listfile")) Cmd_listfile(tr + 1); //nuevo
+  else if (!strcmp(tr[0], "list")) Cmd_list(tr + 1); //nuevo
 
   else Cmd_pplano(tr);
 }
