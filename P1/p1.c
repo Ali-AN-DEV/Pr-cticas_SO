@@ -62,6 +62,31 @@ int ComprobarSegundoPlano (char *tr[])
     return 0;
 }
 
+int BorrarRecursivo(const char *nombre)   /* 0 = bien, -1 = error (con errno) */
+{
+    DIR *d;
+    struct dirent *e;
+    char ruta[MAXNOMBRE];
+    int err;
+
+    if (!EsDirectorio(nombre))
+        return unlink(nombre);
+    if ((d = opendir(nombre)) == NULL)
+        return -1;
+    while ((e = readdir(d)) != NULL) {
+        if (!strcmp(e->d_name, ".") || !strcmp(e->d_name, ".."))
+            continue;
+        snprintf(ruta, sizeof(ruta), "%s/%s", nombre, e->d_name);
+        if (BorrarRecursivo(ruta) == -1) {   /* primero los hijos... */
+            err = errno;                     /* closedir podría cambiar errno */
+            closedir(d);
+            errno = err;
+            return -1;                       /* ...y al primer error, abortamos */
+        }
+    }
+    closedir(d);
+    return rmdir(nombre);                    /* ...y al final el padre */
+}
 
 void Proceso (char *tr[], int splano)
 {
@@ -219,7 +244,7 @@ void Cmd_open(char *tr[])
     printf("Anadida entrada a la tabla ficheros abiertos %d: %s\n", df, tr[0]);
 }
 
-void Cmd_close(char *tr[])
+void Cmd_close(char *tr[]) //si haces close (df) entra en un bucle
 {
     int df;
 
@@ -387,6 +412,35 @@ void Cmd_sysinfo(char *arg[])
         u.nodename, u.machine, u.sysname, u.release, u.version); 
 }
 
+void Cmd_delete(char *tr[])
+{
+    int i, r;
+    if (tr[0] == NULL) {
+        MostrarDirActual(); 
+        return; 
+    
+    }
+
+    for (i = 0; tr[i] != NULL; i++) {
+        r = EsDirectorio(tr[i]) ? rmdir(tr[i]) : unlink(tr[i]);
+        if (r == -1)
+            printf("Imposible borrar %s: %s\n", tr[i], strerror(errno));
+    }
+}
+
+void Cmd_deltree(char *tr[])
+{
+    int i;
+
+    if (tr[0] == NULL) { 
+        MostrarDirActual(); 
+        return; 
+    }
+
+    for (i = 0; tr[i] != NULL; i++)
+        if (BorrarRecursivo(tr[i]) == -1)
+            printf("Imposible borrar %s: %s\n", tr[i], strerror(errno));
+}
 
 /**************************SHELL**************************/
 
@@ -433,7 +487,9 @@ void DecidirComando(char *tr[])
   else if (!strcmp(tr[0], "makefile")) Cmd_makefile(tr + 1); //nuevo
   else if (!strcmp(tr[0], "makedir"))  Cmd_makedir(tr + 1); //nuevo
   else if (!strcmp(tr[0], "date")) Cmd_date(tr+1); //nueuvo
-  else if (!strcmp(tr[0], "sysinfo")) Cmd_sysinfo(tr + 1); 
+  else if (!strcmp(tr[0], "sysinfo")) Cmd_sysinfo(tr + 1);
+  else if (!strcmp(tr[0], "delete")) Cmd_delete(tr + 1); 
+  else if (!strcmp(tr[0], "deltree")) Cmd_deltree(tr + 1); 
 
   else Cmd_pplano(tr);
 }
