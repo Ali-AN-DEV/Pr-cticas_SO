@@ -29,6 +29,12 @@
 #define OPT_RECA 0x10
 #define OPT_RECB 0x20
 
+typedef struct {
+    const char *nombre;
+    const char *uso;
+    const char *descripcion;
+} tHelp;
+
 //Lista 
 typedef struct tFichero {
     int descriptor;
@@ -622,6 +628,53 @@ void Cmd_deltree(char *tr[])
             printf("Imposible borrar %s: %s\n", tr[i], strerror(errno));
 }
 
+static const tHelp helps[] = {
+    {"exit",     "exit",                               "Termina la ejecucion del shell"},
+    {"bye",      "bye",                                "Termina la ejecucion del shell"},
+    {"date",     "date [-d|-t]",                       "Muestra fecha y hora. -d solo la fecha, -t solo la hora"},
+    {"pid",      "pid [-p]",                           "Muestra el pid del shell. -p muestra el pid de su proceso padre"},
+    {"authors",  "authors [-l|-n]",                    "Muestra los autores del shell. -l solo logins, -n solo nombres"},
+    {"sysinfo",  "sysinfo",                            "Muestra informacion de la maquina"},
+    {"help",     "help [cmd]",                         "Sin argumentos lista los comandos; con cmd, da informacion de ese comando"},
+    {"chdir",    "chdir [dir]",                        "Cambia el directorio de trabajo a dir. Sin argumentos muestra el actual"},
+    {"open",     "open [file m1 m2...]",               "Abre file con los modos m1, m2... (cr, ap, ex, ro, rw, wo, tr) y lo anade a la lista de abiertos. Sin argumentos lista los abiertos"},
+    {"close",    "close [df]",                         "Cierra el descriptor df y lo elimina de la lista de abiertos"},
+    {"listopen", "listopen",                           "Lista los ficheros abiertos por el shell"},
+    {"dup",      "dup df",                             "Duplica el descriptor df y lo anade a la lista de abiertos"},
+    {"lseek",    "lseek df pos ref",                   "Posiciona el cursor de df en pos. ref: SEEK_SET, SEEK_CUR o SEEK_END"},
+    {"readstr",  "readstr df cont",                    "Lee cont bytes de df y los muestra como una cadena"},
+    {"writestr", "writestr df str",                    "Escribe la cadena str en el fichero descrito por df"},
+    {"makefile", "makefile name",                      "Crea un fichero vacio de nombre name"},
+    {"makedir",  "makedir name",                       "Crea un directorio de nombre name"},
+    {"delete",   "delete name1 name2...",              "Borra ficheros, enlaces o directorios vacios"},
+    {"deltree",  "deltree name1 name2...",             "Borra ficheros, enlaces o directorios con todo su contenido"},
+    {"listfile", "listfile [-long][-link][-acc] name1 name2...", "Da informacion de los objetos del sistema de ficheros (nombre y tamano). -long listado largo, -link muestra el destino de los enlaces, -acc usa la fecha de ultimo acceso"},
+    {"list",     "list [-reca][-recb][-hid][-long][-link][-acc] name1 name2...", "Como listfile, pero si name es un directorio lista su contenido. -hid incluye ocultos, -reca recursivo despues, -recb recursivo antes"},
+    {NULL, NULL, NULL}
+};
+
+void Cmd_help(char *tr[])
+{
+    int i;
+
+    if (tr[0] == NULL) {
+        printf("'help [cmd]' ayuda sobre los comandos\n");
+        printf("Comandos disponibles:");
+        for (i = 0; helps[i].nombre != NULL; i++)
+            printf(" %s", helps[i].nombre);
+        printf("\n");
+        return;
+    }
+
+    for (i = 0; helps[i].nombre != NULL; i++) {
+        if (!strcmp(tr[0], helps[i].nombre)) {
+            printf("%s: %s\n", helps[i].uso, helps[i].descripcion);
+            return;
+        }
+    }
+    printf("%s no encontrado\n", tr[0]);
+}
+
 /**************************SHELL**************************/
 
 
@@ -666,13 +719,13 @@ void DecidirComando(char *tr[])
   else if (!strcmp(tr[0], "writestr")) Cmd_writestr(tr + 1); //nuevo
   else if (!strcmp(tr[0], "makefile")) Cmd_makefile(tr + 1); //nuevo
   else if (!strcmp(tr[0], "makedir"))  Cmd_makedir(tr + 1); //nuevo
-  else if (!strcmp(tr[0], "date")) Cmd_date(tr+1); //nueuvo
+  else if (!strcmp(tr[0], "date")) Cmd_date(tr+1); //nuevo
   else if (!strcmp(tr[0], "sysinfo")) Cmd_sysinfo(tr + 1); 
   else if (!strcmp(tr[0], "listfile")) Cmd_listfile(tr + 1); //nuevo
   else if (!strcmp(tr[0], "list")) Cmd_list(tr + 1); //nuevo
-  else if (!strcmp(tr[0], "sysinfo")) Cmd_sysinfo(tr + 1);
-  else if (!strcmp(tr[0], "delete")) Cmd_delete(tr + 1); 
-  else if (!strcmp(tr[0], "deltree")) Cmd_deltree(tr + 1); 
+  else if (!strcmp(tr[0], "delete")) Cmd_delete(tr + 1); //nuevo
+  else if (!strcmp(tr[0], "deltree")) Cmd_deltree(tr + 1); //nuevo
+  else if (!strcmp(tr[0], "help")) Cmd_help(tr + 1);//nuevo
 
   else Cmd_pplano(tr);
 }
