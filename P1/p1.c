@@ -29,6 +29,7 @@
 #define OPT_RECA 0x10
 #define OPT_RECB 0x20
 
+
 typedef struct {
     const char *nombre;
     const char *uso;
@@ -139,18 +140,31 @@ void InicializarTabla(void) {
 }
 
 void AnadirFichero(int descriptor, const char *nombre, int modo) {
+    int i;
+    tFichero *aux;
+
     if (descriptor >= numEntradas) {
-        tabla = realloc(tabla, (descriptor + 1) * sizeof(tFichero)); 
-        if (tabla == NULL) {
+        aux = realloc(tabla, (descriptor + 1) * sizeof(tFichero));
+        if (aux == NULL) {                      /* si falla, tabla sigue siendo valida */
             perror("Imposible ampliar tabla");
-            return;    
+            return;
         }
-        numEntradas = descriptor + 1; 
+        tabla = aux;
+        for (i = numEntradas; i <= descriptor; i++)   /* huecos nuevos: marcados como libres */
+            tabla[i].abierto = 0;
+        numEntradas = descriptor + 1;
     }
-    tabla[descriptor].descriptor = descriptor; 
-    strcpy(tabla[descriptor].nombre, nombre); 
-    tabla[descriptor].modo = modo; 
-    tabla[descriptor].abierto = 1; 
+    tabla[descriptor].descriptor = descriptor;
+    strncpy(tabla[descriptor].nombre, nombre, MAXNOMBRE - 1);
+    tabla[descriptor].nombre[MAXNOMBRE - 1] = '\0';   /* strncpy no garantiza el \0 */
+    tabla[descriptor].modo = modo;
+    tabla[descriptor].abierto = 1;
+}
+
+void LiberarTabla(void) {
+    free(tabla);
+    tabla = NULL;
+    numEntradas = 0;
 }
 
 void ListarFicherosAbiertos(void) {
@@ -376,7 +390,7 @@ void Cmd_makefile(char *tr[])
 {
     int i, fd;
     for (i = 0; tr[i] != NULL; i++) {
-        fd = open(tr[i], O_CREAT | O_WRONLY | O_TRUNC, 0666);
+        fd = open(tr[i], O_CREAT | O_EXCL | O_WRONLY, 0666); //excl es vital
         if (fd == -1) {
             fprintf(stderr, "makefile: %s: %s\n", tr[i], strerror(errno));
             continue;
@@ -465,41 +479,43 @@ char * ConvierteModo (mode_t m, char *permisos)
 void ImprimirInfoObjeto(const char *ruta, const char *nombreMostrar, int flags)
 {
     struct stat s;
-    char permisos[11];
+    char permisos[12]; //necesita 12 para no tener errores
     struct passwd *pw;
     struct group  *gr;
     char tbuf[32];
     time_t t;
- 
+    char destino[PATH_MAX];
+    char flecha[PATH_MAX + 8] = "";   /* " -> destino" o cadena vacia */
+    ssize_t n;
+
     if (lstat(ruta, &s) == -1) {
         fprintf(stderr, " ****error al acceder a %s:%s\n", ruta, strerror(errno));
         return;
     }
- 
+
+    /* Primero preparamos la flecha (si procede), luego imprimimos UNA sola linea */
+    if ((flags & OPT_LINK) && S_ISLNK(s.st_mode)) {
+        n = readlink(ruta, destino, sizeof(destino) - 1);
+        if (n != -1) {
+            destino[n] = '\0';                       /* readlink NO pone el \0 */
+            snprintf(flecha, sizeof(flecha), " -> %s", destino);
+        }
+    }
+
     if (!(flags & OPT_LONG)) {
-        printf("%8ld  %s\n", (long) s.st_size, nombreMostrar);
+        printf("%8ld  %s%s\n", (long) s.st_size, nombreMostrar, flecha);
     } else {
         ConvierteModo(s.st_mode, permisos);
         pw = getpwuid(s.st_uid);
         gr = getgrgid(s.st_gid);
-        t = (flags & OPT_ACC) ? s.st_atime : s.st_ctime;
+        t = (flags & OPT_ACC) ? s.st_atime : s.st_mtime; 
         strftime(tbuf, sizeof(tbuf), "%Y/%m/%d-%H:%M", localtime(&t));
-        printf("%s%4ld (%8ld)%9s%9s %s%9ld %s\n",
+        printf("%s%4ld (%8ld)%9s%9s %s%9ld %s%s\n",
                tbuf, (long) s.st_nlink, (long) s.st_ino,
                pw ? pw->pw_name : "?", gr ? gr->gr_name : "?",
-               permisos, (long) s.st_size, nombreMostrar);
-    }
- 
-    if ((flags & OPT_LINK) && S_ISLNK(s.st_mode)) {
-        char destino[PATH_MAX];
-        ssize_t n = readlink(ruta, destino, sizeof(destino) - 1);
-        if (n != -1) {
-            destino[n] = '\0';
-            printf("    -> %s\n", destino);
-        }
+               permisos, (long) s.st_size, nombreMostrar, flecha);
     }
 }
-
 void Cmd_listfile(char *tr[])
 {
     int i, flags = 0;
@@ -751,11 +767,14 @@ int main(int argc, char *argv[], char *ent[])
 {
    char entrada[MAXENTRADA];
    InicializarTabla(); //n
-
+   atexit(LiberarTabla);
    while (1){
       printf ("-> ");
-      fgets(entrada,MAXENTRADA,stdin); //si pulsas ctrl+d en la terminal da un bucle raro
-      ProcesarEntrada(entrada);
-   }
+      if (fgets(entrada, MAXENTRADA, stdin) == NULL) {
+        printf("\n");
+        break;
+     }                                              //si pulsas ctrl+d en la terminal da un bucle raro,
+     ProcesarEntrada(entrada);                     //en el que se ignora un NULL y se repite infinitamente el resultado de procesar entrada
+   }                                                //por eso hacemos la comprobación con un if. Pasaba lo mismo c
 }
 
