@@ -694,23 +694,6 @@ void Cmd_help(char *tr[])
 /**************************SHELL**************************/
 
 
-/* v3
-*static struct COMANDO C[]={ no declaro dimension, que la coge de la inicializacion
-*{"fin",Cmd_fin},
-*{"exit",Cmd_fin},
-*{"quit",Cmd_fin},
-*{"pid",Cmd_pid},
-*{"pwd", Cmd_pwd},
-*{"chdir",Cmd_chdir},
-*{"autores",Cmd_autores},
-*{"exec",Cmd_exec},
-*{"pplano",Cmd_pplano},
-*{"splano",Cmd_splano},
-*{NULL,NULL},             NULL marca el final del array
-*};
-*/ 
-
-
 void DecidirComando(char *tr[])
 {
   if (tr[0]==NULL)  /*por si cambiamos lo de TroearCadena==0*/
