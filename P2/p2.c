@@ -1,5 +1,5 @@
 /*
- * Sistemas Operativos - P1
+ * Sistemas Operativos - P2
  * Autores:
  *   Ruben Varela Tarrio - ruben.varela.tarrio@udc.es
  *   Ali Abu-afash Nayef - ali.nayef@udc.es

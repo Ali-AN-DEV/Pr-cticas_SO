@@ -1,8 +1,3 @@
-/*
- * Sistemas Operativos - P1
- * Comandos del shell (procesos, descriptores, ficheros y sistema)
- */
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
