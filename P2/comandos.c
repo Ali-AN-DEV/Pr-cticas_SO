@@ -24,7 +24,6 @@
 #define OPT_RECA 0x10
 #define OPT_RECB 0x20
 
-
 static void MostrarDirActual(void)
 {
     char dir[MAXNOMBRE];
@@ -583,6 +582,7 @@ static const tHelp helps[] = {
     {"deltree",  "deltree name1 name2...",             "Borra ficheros, enlaces o directorios con todo su contenido"},
     {"listfile", "listfile [-long][-link][-acc] name1 name2...", "Da informacion de los objetos del sistema de ficheros (nombre y tamano). -long listado largo, -link muestra el destino de los enlaces, -acc usa la fecha de ultimo acceso"},
     {"list",     "list [-reca][-recb][-hid][-long][-link][-acc] name1 name2...", "Como listfile, pero si name es un directorio lista su contenido. -hid incluye ocultos, -reca recursivo despues, -recb recursivo antes"},
+    {"recurse", "recurse [n]", "Llama de forma recursiva desde n a 0 mostrando en cada nivel las direcciones de memoria automáticas vs estáticas"},
     {NULL, NULL, NULL}
 };
 
@@ -608,3 +608,28 @@ void Cmd_help(char *tr[])
     printf("%s no encontrado\n", tr[0]);
 }
 
+//función auxiliar de cmd_recurse que viene del ayudaP2.txt
+static void Recursiva (int n)
+{
+  char automatico[MAXENTRADA];
+  static char estatico[MAXENTRADA];
+
+  printf ("parametro:%3d(%p) array %p, arr estatico %p\n",n,&n,automatico, estatico);
+
+  if (n>0)
+    Recursiva(n-1);
+}
+
+void Cmd_recurse(char *tr[])
+{
+    /* 1. si falta el argumento, ¿qué debe pasar? (mira el shell de referencia) */
+    if (tr[0] == NULL){
+        return; 
+    }
+
+    /* 2. pasar la cadena tr[0] a int (como en Cmd_close) */
+    int n = atoi(tr[0]); 
+
+    /* 3. llamar a Recursiva con ese valor */
+    Recursiva(n);
+}

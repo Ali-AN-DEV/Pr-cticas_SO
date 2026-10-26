@@ -36,6 +36,7 @@ static void DecidirComando(char *tr[])
     else if (!strcmp(tr[0], "delete")) Cmd_delete(tr + 1);
     else if (!strcmp(tr[0], "deltree")) Cmd_deltree(tr + 1);
     else if (!strcmp(tr[0], "help")) Cmd_help(tr + 1);
+    else if (!strcmp(tr[0], "recurse")) Cmd_recurse(tr + 1);
     else Cmd_pplano(tr);
 }
 

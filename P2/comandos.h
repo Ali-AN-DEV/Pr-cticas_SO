@@ -23,5 +23,6 @@ void Cmd_pwd(void);
 void Cmd_date(char *arg[]);
 void Cmd_sysinfo(char *arg[]);
 void Cmd_help(char *tr[]);
+void Cmd_recurse(char *tr[]); 
 
 #endif

@@ -1,7 +1,8 @@
-# Ignorar .outs
+# Objetos y dependencias generados por make
+*.o
+*.d
 
-.out
-
-# Ignorar binarios
-
+# Ejecutables
+*.out
 P1/p1
+P2/p2
