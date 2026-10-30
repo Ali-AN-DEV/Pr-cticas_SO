@@ -12,10 +12,13 @@
 #include <pwd.h>
 #include <grp.h>
 #include <limits.h>
+#include <sys/mman.h>
+#include <sys/shm.h>
 
 #include "comun.h"
 #include "tabla.h"
 #include "comandos.h"
+#include "memoria.h"
 
 #define OPT_LONG 0x01
 #define OPT_LINK 0x02
@@ -636,13 +639,334 @@ void Cmd_recurse(char *tr[])
     Recursiva(n);
 }
 
-void Cmd_allocate(char *tr[]){
 
+//allocate y auxiliares:
+
+/* Obtiene (o crea, si tam != 0) un bloque de memoria compartida, lo
+   engancha al proceso y lo anade a la lista. NULL y errno si falla. */
+static void *ObtenerMemoriaShmget(key_t clave, size_t tam)
+{
+    void *p;
+    int aux, id, flags = 0777;   /* los 9 bits menos significativos: permisos */
+    struct shmid_ds s;
+    tBloque b;
+ 
+    if (tam)                     /* tam != 0 indica crear */
+        flags |= IPC_CREAT | IPC_EXCL;
+    if (clave == IPC_PRIVATE) {  /* no nos vale */
+        errno = EINVAL;
+        return NULL;
+    }
+    if ((id = shmget(clave, tam, flags)) == -1)
+        return NULL;
+    if ((p = shmat(id, NULL, 0)) == (void *) -1) {
+        aux = errno;
+        if (tam)
+            shmctl(id, IPC_RMID, NULL);   /* no dejamos basura en el sistema */
+        errno = aux;
+        return NULL;
+    }
+ 
+    /* Si no es crear, el tamano real esta en shm_segsz */
+    if (shmctl(id, IPC_STAT, &s) == -1) {
+        aux = errno;
+        shmdt(p);
+        if (tam)
+            shmctl(id, IPC_RMID, NULL);
+        errno = aux;
+        return NULL;
+    }
+ 
+    memset(&b, 0, sizeof(b));
+    b.direccion = p;
+    b.tamano = s.shm_segsz;
+    b.tipo = SHARED;
+    b.info.clave = clave;
+    if (!insertarBloque(&b)) {
+        shmdt(p);
+        if (tam)
+            shmctl(id, IPC_RMID, NULL);
+        errno = ENOMEM;
+        return NULL;
+    }
+    return p;
+}
+ 
+/* Mapea el fichero entero, lo anade a la lista de bloques y su descriptor
+   a la tabla de ficheros abiertos. NULL y errno si falla. */
+static void *MapearFichero(char *fichero, int protection)
+{
+    int df = -1, aux, modo = O_RDONLY;
+    struct stat s;
+    void *p;
+    tBloque b;
+    char nombreTabla[MAXNOMBRE];
+ 
+    if (protection & PROT_WRITE)
+        modo = O_RDWR;
+    if (stat(fichero, &s) == -1 || (df = open(fichero, modo)) == -1)
+        return NULL;
+    if ((p = mmap(NULL, s.st_size, protection, MAP_PRIVATE, df, 0)) == MAP_FAILED) {
+        aux = errno;
+        close(df);               /* si no, el descriptor se queda abierto */
+        errno = aux;
+        return NULL;
+    }
+ 
+    memset(&b, 0, sizeof(b));
+    b.direccion = p;
+    b.tamano = s.st_size;
+    b.tipo = MMAP;
+    b.info.archivo.nombre = fichero;   /* insertarBloque guarda su propia copia */
+    b.info.archivo.descriptor = df;
+    if (!insertarBloque(&b)) {
+        munmap(p, s.st_size);
+        close(df);
+        errno = ENOMEM;
+        return NULL;
+    }
+ 
+    snprintf(nombreTabla, sizeof(nombreTabla), "Mapeo de %s", fichero);
+    AnadirFichero(df, nombreTabla, modo);
+    return p;
+}
+ 
+static void AllocateMalloc(char *tr[])
+{
+    size_t tam;
+    void *p;
+    tBloque b;
+ 
+    if (tr[0] == NULL) {
+        mostrarBloques(LISTAR_MALLOC);
+        return;
+    }
+    tam = (size_t) strtoul(tr[0], NULL, 10);
+    if (tam == 0) {
+        printf("No se asignan bloques de 0 bytes\n");
+        return;
+    }
+    if ((p = malloc(tam)) == NULL) {
+        perror("Imposible obtener memoria con malloc");
+        return;
+    }
+ 
+    memset(&b, 0, sizeof(b));
+    b.direccion = p;
+    b.tamano = tam;
+    b.tipo = MALLOC;
+    if (!insertarBloque(&b)) {
+        free(p);                 /* sin registro en la lista no hay quien lo libere */
+        fprintf(stderr, "Imposible anadir el bloque a la lista\n");
+        return;
+    }
+    printf("Asignados %lu bytes en %p\n", (unsigned long) tam, p);
+}
+ 
+static void AllocateCreateShared(char *tr[])
+{
+    key_t cl;
+    size_t tam;
+    void *p;
+ 
+    if (tr[0] == NULL || tr[1] == NULL) {
+        mostrarBloques(LISTAR_SHARED);
+        return;
+    }
+    cl = (key_t) strtoul(tr[0], NULL, 10);
+    tam = (size_t) strtoul(tr[1], NULL, 10);
+    if (tam == 0) {
+        printf("No se asignan bloques de 0 bytes\n");
+        return;
+    }
+    if ((p = ObtenerMemoriaShmget(cl, tam)) != NULL)
+        printf("Asignados %lu bytes en %p\n", (unsigned long) tam, p);
+    else
+        printf("Imposible asignar memoria compartida clave %lu: %s\n",
+               (unsigned long) cl, strerror(errno));
+}
+ 
+static void AllocateShared(char *tr[])
+{
+    key_t cl;
+    void *p;
+ 
+    if (tr[0] == NULL) {
+        mostrarBloques(LISTAR_SHARED);
+        return;
+    }
+    cl = (key_t) strtoul(tr[0], NULL, 10);
+    if ((p = ObtenerMemoriaShmget(cl, 0)) != NULL)
+        printf("Memoria compartida de clave %lu  en %p\n", (unsigned long) cl, p);
+    else
+        printf("Imposible asignar memoria compartida clave %lu: %s\n",
+               (unsigned long) cl, strerror(errno));
+}
+ 
+static void AllocateMmap(char *tr[])
+{
+    char *perm;
+    void *p;
+    int protection = 0;
+ 
+    if (tr[0] == NULL) {
+        mostrarBloques(LISTAR_MMAP);
+        return;
+    }
+    if ((perm = tr[1]) != NULL && strlen(perm) < 4) {
+        if (strchr(perm, 'r') != NULL) protection |= PROT_READ;
+        if (strchr(perm, 'w') != NULL) protection |= PROT_WRITE;
+        if (strchr(perm, 'x') != NULL) protection |= PROT_EXEC;
+    }
+    if ((p = MapearFichero(tr[0], protection)) == NULL)
+        perror("Imposible mapear fichero");
+    else
+        printf("fichero %s mapeado en %p\n", tr[0], p);
+}
+ 
+void Cmd_allocate(char *tr[])
+{
     // 1) si tr[0] == NULL, es decir un simple allcoate, listar todos los bloques
     // 2) tr[0] es "-malloc"
+    if (tr[0] == NULL)
+        mostrarBloques(LISTAR_TODO);
+    else if (!strcmp(tr[0], "-malloc"))       AllocateMalloc(tr + 1);
+    else if (!strcmp(tr[0], "-createshared")) AllocateCreateShared(tr + 1);
+    else if (!strcmp(tr[0], "-shared"))       AllocateShared(tr + 1);
+    else if (!strcmp(tr[0], "-mmap"))         AllocateMmap(tr + 1);
+    else
+        printf("uso: allocate [-malloc|-shared|-createshared|-mmap] ....\n");
 }
 
-void Cmd_deallocate(char *tr[]){
+
+//Deallocate y auxiliares:
+
+/* Libera el recurso del bloque segun su tipo y lo quita de la lista.
+   Recibe un puntero DENTRO de la lista, asi que copia lo que necesita
+   antes de que eliminarBloque lo deje invalido. */
+
+
+static void LiberarBloque(const tBloque *b)
+{
+    tBloque c = *b;
+ 
+    switch (c.tipo) {
+        case MALLOC:
+            free(c.direccion);
+            break;
+        case SHARED:
+            if (shmdt(c.direccion) == -1) {
+                perror("Imposible desasignar memoria compartida");
+                return;          /* no seguimos: el bloque sigue enganchado */
+            }
+            break;
+        case MMAP:
+            if (munmap(c.direccion, c.tamano) == -1) {
+                perror("Imposible desmapear fichero");
+                return;
+            }
+            if (close(c.info.archivo.descriptor) == -1)
+                perror("Imposible cerrar descriptor");
+            MarcarCerrado(c.info.archivo.descriptor);   /* fuera de la tabla de abiertos */
+            break;
+    }
+    eliminarBloque(c.direccion);
+}
+
+static void DeallocateMalloc(char *tr[])
+{
+    size_t tam;
+    const tBloque *b;
+ 
+    if (tr[0] == NULL) {
+        mostrarBloques(LISTAR_MALLOC);
+        return;
+    }
+    tam = (size_t) strtoul(tr[0], NULL, 10);
+    if (tam == 0) {
+        printf("No se asignan bloques de 0 bytes\n");
+        return;
+    }
+    if ((b = buscarMallocPorTamano(tam)) == NULL)
+        printf("No hay bloque de ese tamano asignado con malloc\n");
+    else
+        LiberarBloque(b);
+}
+
+static void DeallocateShared(char *tr[])
+{
+    key_t cl;
+    const tBloque *b;
+ 
+    if (tr[0] == NULL) {
+        mostrarBloques(LISTAR_SHARED);
+        return;
+    }
+    cl = (key_t) strtoul(tr[0], NULL, 10);
+    if ((b = buscarSharedPorClave(cl)) == NULL)
+        printf("No hay bloque de esa clave mapeado en el proceso\n");
+    else
+        LiberarBloque(b);
+}
+
+static void DeallocateMmap(char *tr[])
+{
+    const tBloque *b;
+ 
+    if (tr[0] == NULL) {
+        mostrarBloques(LISTAR_MMAP);
+        return;
+    }
+    if ((b = buscarMmapPorNombre(tr[0])) == NULL)
+        printf("Fichero %s no mapeado\n", tr[0]);
+    else
+        LiberarBloque(b);
+}
+
+static void SharedDelkey(char *tr[])
+{
+    key_t clave = IPC_PRIVATE;
+    int id;
+ 
+    if (tr[0] == NULL || (clave = (key_t) strtoul(tr[0], NULL, 10)) == IPC_PRIVATE) {
+        printf("      delkey necesita clave_valida\n");
+        return;
+    }
+    if ((id = shmget(clave, 0, 0666)) == -1) {
+        perror("shmget: imposible obtener memoria compartida");
+        return;
+    }
+    if (shmctl(id, IPC_RMID, NULL) == -1)
+        perror("shmctl: imposible eliminar memoria compartida");
+}
+
+static void DeallocateDireccion(char *cadena)
+{
+    void *p = NULL;              /* si sscanf falla, NO queremos basura */
+    const tBloque *b;
+ 
+    if (sscanf(cadena, "%p", &p) != 1)
+        p = NULL;
+    if (p == NULL) {             /* como el shell de referencia: 0x0 o texto no valido -> lista */
+        mostrarBloques(LISTAR_TODO);
+        return;
+    }
+    if ((b = buscarBloquePorDireccion(p)) == NULL)
+        printf("Direccion %p no asignada con malloc, shared o mmap\n", p);
+    else
+        LiberarBloque(b);
+}
+
+void Cmd_deallocate(char *tr[])
+{
     // 1) si tr[0] == NULL listar todos
     // 2) tr"-amlloc" con un -malloc tam localizar un bloque de ese tamalo 
+    if (tr[0] == NULL)
+        mostrarBloques(LISTAR_TODO);
+    else if (!strcmp(tr[0], "-malloc"))  DeallocateMalloc(tr + 1);
+    else if (!strcmp(tr[0], "-shared"))  DeallocateShared(tr + 1);
+    else if (!strcmp(tr[0], "-delkey"))  SharedDelkey(tr + 1);
+    else if (!strcmp(tr[0], "-mmap"))    DeallocateMmap(tr + 1);
+    else
+        DeallocateDireccion(tr[0]);
 }

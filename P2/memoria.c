@@ -43,7 +43,7 @@ int insertarBloque(const tBloque *bloque) {
             free(nuevo);
             return 0;
         }
-    }
+    } 
 
     if (lista == NULL)
         lista = nuevo;
@@ -161,7 +161,7 @@ void mostrarBloques(tModoListado modo) {
                 printf("shared (key %ld)\n", (long)actual->bloque.info.clave);
                 break;
             case MMAP:
-                printf("%s (descriptor %d)\n", actual->bloque.info.archivo.nombre,
+                printf("%s  (descriptor %d)\n", actual->bloque.info.archivo.nombre,
                        actual->bloque.info.archivo.descriptor);
                 break;
         }
