@@ -24,5 +24,7 @@ void Cmd_date(char *arg[]);
 void Cmd_sysinfo(char *arg[]);
 void Cmd_help(char *tr[]);
 void Cmd_recurse(char *tr[]); 
+void Cmd_allocate(char *tr[]);
+void Cmd_deallocate(char *tr[]);
 
 #endif

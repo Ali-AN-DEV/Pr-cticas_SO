@@ -582,6 +582,8 @@ static const tHelp helps[] = {
     {"deltree",  "deltree name1 name2...",             "Borra ficheros, enlaces o directorios con todo su contenido"},
     {"listfile", "listfile [-long][-link][-acc] name1 name2...", "Da informacion de los objetos del sistema de ficheros (nombre y tamano). -long listado largo, -link muestra el destino de los enlaces, -acc usa la fecha de ultimo acceso"},
     {"list",     "list [-reca][-recb][-hid][-long][-link][-acc] name1 name2...", "Como listfile, pero si name es un directorio lista su contenido. -hid incluye ocultos, -reca recursivo despues, -recb recursivo antes"},
+    {"allocate", "[-malloc|-share|-createshared|-mmap]...", "Asigna un bloque de memoria\n -malloc tam: asigna un bloque malloc de tamaño tam\n -createshared cl tam: asigna creando un bloque de memoria compartida de clave cl y tamaño tam\n -shared cl: asigna el bloque de memoria compartida ya existente de clave cl\n -mmap fich perm: mapea el fichero fich con los permisos perm\n"},
+    {"deallocate, ", "[-malloc|-shared|-delkey|-mmap|addr]..", "Desasigna un bloque de memoria\n -malloc tam: desasigna el bloque malloc de tamaño tam\n -shared cl: desasigna/desmapea el bloque de memoria compartda de clave cl\n -delkey cl: elimina del sistema (sin desmapear) la clave de memoria cl\n -mmap dich: desmapea el fichero mapeado fich\n addr: desasigna el bloque de memoria de la dirección addr\n"},
     {"recurse", "recurse [n]", "Llama de forma recursiva desde n a 0 mostrando en cada nivel las direcciones de memoria automáticas vs estáticas"},
     {NULL, NULL, NULL}
 };
@@ -632,4 +634,15 @@ void Cmd_recurse(char *tr[])
 
     /* 3. llamar a Recursiva con ese valor */
     Recursiva(n);
+}
+
+void Cmd_allocate(char *tr[]){
+
+    // 1) si tr[0] == NULL, es decir un simple allcoate, listar todos los bloques
+    // 2) tr[0] es "-malloc"
+}
+
+void Cmd_deallocate(char *tr[]){
+    // 1) si tr[0] == NULL listar todos
+    // 2) tr"-amlloc" con un -malloc tam localizar un bloque de ese tamalo 
 }

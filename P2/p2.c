@@ -8,8 +8,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include "comun.h"
+#include "memoria.h"
 #include "tabla.h"
 #include "shell.h"
+
 
 int main(void)
 {
@@ -17,6 +19,8 @@ int main(void)
 
     InicializarTabla();
     atexit(LiberarTabla);
+    inicializarLista();
+    atexit(liberarLista);
 
     while (1) {
         printf("-> ");
