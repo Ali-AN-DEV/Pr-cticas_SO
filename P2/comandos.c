@@ -14,6 +14,7 @@
 #include <limits.h>
 #include <sys/mman.h>
 #include <sys/shm.h>
+#include <ctype.h>
 
 #include "comun.h"
 #include "tabla.h"
@@ -26,6 +27,7 @@
 #define OPT_HID  0x08
 #define OPT_RECA 0x10
 #define OPT_RECB 0x20
+#define BYTES_POR_LINEA 25
 
 static void MostrarDirActual(void)
 {
@@ -585,8 +587,8 @@ static const tHelp helps[] = {
     {"deltree",  "deltree name1 name2...",             "Borra ficheros, enlaces o directorios con todo su contenido"},
     {"listfile", "listfile [-long][-link][-acc] name1 name2...", "Da informacion de los objetos del sistema de ficheros (nombre y tamano). -long listado largo, -link muestra el destino de los enlaces, -acc usa la fecha de ultimo acceso"},
     {"list",     "list [-reca][-recb][-hid][-long][-link][-acc] name1 name2...", "Como listfile, pero si name es un directorio lista su contenido. -hid incluye ocultos, -reca recursivo despues, -recb recursivo antes"},
-    {"allocate", "[-malloc|-share|-createshared|-mmap]...", "Asigna un bloque de memoria\n -malloc tam: asigna un bloque malloc de tamaño tam\n -createshared cl tam: asigna creando un bloque de memoria compartida de clave cl y tamaño tam\n -shared cl: asigna el bloque de memoria compartida ya existente de clave cl\n -mmap fich perm: mapea el fichero fich con los permisos perm\n"},
-    {"deallocate, ", "[-malloc|-shared|-delkey|-mmap|addr]..", "Desasigna un bloque de memoria\n -malloc tam: desasigna el bloque malloc de tamaño tam\n -shared cl: desasigna/desmapea el bloque de memoria compartda de clave cl\n -delkey cl: elimina del sistema (sin desmapear) la clave de memoria cl\n -mmap dich: desmapea el fichero mapeado fich\n addr: desasigna el bloque de memoria de la dirección addr\n"},
+    {"allocate", "[-malloc|-shared|-createshared|-mmap]...", "Asigna un bloque de memoria\n -malloc tam: asigna un bloque malloc de tamaño tam\n -createshared cl tam: asigna creando un bloque de memoria compartida de clave cl y tamaño tam\n -shared cl: asigna el bloque de memoria compartida ya existente de clave cl\n -mmap fich perm: mapea el fichero fich con los permisos perm\n"},
+    {"deallocate", "[-malloc|-shared|-delkey|-mmap|addr]..", "Desasigna un bloque de memoria\n -malloc tam: desasigna el bloque malloc de tamaño tam\n -shared cl: desasigna/desmapea el bloque de memoria compartda de clave cl\n -delkey cl: elimina del sistema (sin desmapear) la clave de memoria cl\n -mmap dich: desmapea el fichero mapeado fich\n addr: desasigna el bloque de memoria de la dirección addr\n"},
     {"recurse", "recurse [n]", "Llama de forma recursiva desde n a 0 mostrando en cada nivel las direcciones de memoria automáticas vs estáticas"},
     {NULL, NULL, NULL}
 };
@@ -969,4 +971,72 @@ void Cmd_deallocate(char *tr[])
     else if (!strcmp(tr[0], "-mmap"))    DeallocateMmap(tr + 1);
     else
         DeallocateDireccion(tr[0]);
+}
+
+/* Convierte "0x7ffd..." en puntero. Devuelve 1 si OK, 0 si el texto no es una direccion. */
+static int ParsearDireccion(const char *s, void **dir)
+{
+    void *p = NULL;
+
+    if (s == NULL || sscanf(s, "%p", &p) != 1)
+        return 0;
+    *dir = p;
+    return 1;
+}
+
+void Cmd_memfill(char *tr[])
+{
+    void *dir;
+    unsigned char *p;
+    unsigned long cont, valor;
+    size_t i;
+
+    if (tr[0] == NULL || tr[1] == NULL || tr[2] == NULL) {
+        printf("uso: memfill addr cont hcode\n");
+        return;
+    }
+    if (!ParsearDireccion(tr[0], &dir)) {
+        printf("Direccion invalida: %s\n", tr[0]);
+        return;
+    }
+    cont  = strtoul(tr[1], NULL, 10);
+    valor = strtoul(tr[2], NULL, 16);
+    if (valor > 0xFF) {
+        printf("hcode debe estar entre 0x00 y 0xff\n");
+        return;
+    }
+    //El la funcion de LlenarMemoria de ayudaP2 
+    p = (unsigned char *) dir;
+    for (i = 0; i < cont; i++)
+        p[i] = (unsigned char) valor;
+}
+
+#define BYTES_POR_LINEA 25
+
+void Cmd_memdump(char *tr[])
+{
+    void *dir;
+    const unsigned char *p;
+    size_t cont, i, j;
+
+    if (tr[0] == NULL || tr[1] == NULL) {
+        printf("uso: memdump addr cont\n");
+        return;
+    }
+    if (!ParsearDireccion(tr[0], &dir)) {
+        printf("Direccion invalida: %s\n", tr[0]);
+        return;
+    }
+    cont = (size_t) strtoul(tr[1], NULL, 10);
+    p = (const unsigned char *) dir;
+
+    printf("Volcando %zu bytes desde la direccion %p\n", cont, dir);
+    for (i = 0; i < cont; i += BYTES_POR_LINEA) {
+        for (j = i; j < i + BYTES_POR_LINEA && j < cont; j++)
+            printf("%3c", isprint(p[j]) ? p[j] : ' ');
+        printf("\n");
+        for (j = i; j < i + BYTES_POR_LINEA && j < cont; j++)
+            printf("%02x ", p[j]);
+        printf("\n");
+    }
 }

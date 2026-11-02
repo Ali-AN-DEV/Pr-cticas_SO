@@ -39,6 +39,8 @@ static void DecidirComando(char *tr[])
     else if (!strcmp(tr[0], "recurse")) Cmd_recurse(tr + 1);
     else if (!strcmp(tr[0], "allocate")) Cmd_allocate(tr + 1);
     else if (!strcmp(tr[0], "deallocate")) Cmd_deallocate(tr + 1);
+    else if (!strcmp(tr[0], "memfill")) Cmd_memfill(tr + 1);
+    else if (!strcmp(tr[0], "memdump")) Cmd_memdump(tr + 1);
     
     else Cmd_pplano(tr);
 }
