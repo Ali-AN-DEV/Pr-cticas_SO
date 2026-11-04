@@ -26,6 +26,8 @@ void Cmd_help(char *tr[]);
 void Cmd_recurse(char *tr[]); 
 void Cmd_allocate(char *tr[]);
 void Cmd_deallocate(char *tr[]);
+void Cmd_read(char *tr[]);
+void Cmd_write(char *tr[]);
 void Cmd_memfill(char *tr[]);
 void Cmd_memdump(char *tr[]);
 

@@ -589,6 +589,10 @@ static const tHelp helps[] = {
     {"list",     "list [-reca][-recb][-hid][-long][-link][-acc] name1 name2...", "Como listfile, pero si name es un directorio lista su contenido. -hid incluye ocultos, -reca recursivo despues, -recb recursivo antes"},
     {"allocate", "[-malloc|-shared|-createshared|-mmap]...", "Asigna un bloque de memoria\n -malloc tam: asigna un bloque malloc de tamaño tam\n -createshared cl tam: asigna creando un bloque de memoria compartida de clave cl y tamaño tam\n -shared cl: asigna el bloque de memoria compartida ya existente de clave cl\n -mmap fich perm: mapea el fichero fich con los permisos perm\n"},
     {"deallocate", "[-malloc|-shared|-delkey|-mmap|addr]..", "Desasigna un bloque de memoria\n -malloc tam: desasigna el bloque malloc de tamaño tam\n -shared cl: desasigna/desmapea el bloque de memoria compartda de clave cl\n -delkey cl: elimina del sistema (sin desmapear) la clave de memoria cl\n -mmap dich: desmapea el fichero mapeado fich\n addr: desasigna el bloque de memoria de la dirección addr\n"},
+    {"read",  "read df addr cont",  "Transfiere cont bytes del fichero descrito por df a la direccion addr (hexadecimal)"},
+    {"write", "write df addr cont", "Transfiere cont bytes desde la direccion addr (hexadecimal) al fichero descrito por df"},
+    {"memfill", "memfill addr cont hcode", "Llena cont bytes a partir de la direccion addr con el byte hcode (hexadecimal)"},
+    {"memdump", "memdump addr cont",       "Vuelca en pantalla cont bytes a partir de la direccion addr, en hexadecimal y como caracteres"},
     {"recurse", "recurse [n]", "Llama de forma recursiva desde n a 0 mostrando en cada nivel las direcciones de memoria automáticas vs estáticas"},
     {NULL, NULL, NULL}
 };
@@ -983,6 +987,61 @@ static int ParsearDireccion(const char *s, void **dir)
     *dir = p;
     return 1;
 }
+
+//read and write
+void Cmd_read(char *tr[])
+{
+    void *dir;
+    int df;
+    size_t cont;
+    ssize_t n;
+
+    if (tr[0] == NULL || tr[1] == NULL || tr[2] == NULL) {
+        printf("uso: read df addr cont\n");
+        return;
+    }
+    df = atoi(tr[0]);
+    if (!ParsearDireccion(tr[1], &dir)) {
+        printf("Direccion invalida: %s\n", tr[1]);
+        return;
+    }
+    cont = (size_t) strtoul(tr[2], NULL, 10);
+
+    n = read(df, dir, cont);
+    if (n == -1)
+        printf("Error al leer del descriptor %d a la direccion %p: %s\n",
+               df, dir, strerror(errno));
+    else
+        printf("Leidos %zd bytes del descriptor %d en la direccion %p\n", n, df, dir);
+}
+
+void Cmd_write(char *tr[])
+{
+    void *dir;
+    int df;
+    size_t cont;
+    ssize_t n;
+
+    if (tr[0] == NULL || tr[1] == NULL || tr[2] == NULL) {
+        printf("uso: write df addr cont\n");
+        return;
+    }
+    df = atoi(tr[0]);
+    if (!ParsearDireccion(tr[1], &dir)) {
+        printf("Direccion invalida: %s\n", tr[1]);
+        return;
+    }
+    cont = (size_t) strtoul(tr[2], NULL, 10);
+
+    n = write(df, dir, cont);
+    if (n == -1)
+        printf("Error al escribir en el descriptor %d desde la direccion %p: %s\n",
+               df, dir, strerror(errno));
+    else
+        printf("Escritos %zd bytes en el descriptor %d desde la direccion %p\n", n, df, dir);
+}
+
+//memfill + memdump
 
 void Cmd_memfill(char *tr[])
 {
