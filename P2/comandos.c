@@ -589,6 +589,8 @@ static const tHelp helps[] = {
     {"list",     "list [-reca][-recb][-hid][-long][-link][-acc] name1 name2...", "Como listfile, pero si name es un directorio lista su contenido. -hid incluye ocultos, -reca recursivo despues, -recb recursivo antes"},
     {"allocate", "[-malloc|-shared|-createshared|-mmap]...", "Asigna un bloque de memoria\n -malloc tam: asigna un bloque malloc de tamaño tam\n -createshared cl tam: asigna creando un bloque de memoria compartida de clave cl y tamaño tam\n -shared cl: asigna el bloque de memoria compartida ya existente de clave cl\n -mmap fich perm: mapea el fichero fich con los permisos perm\n"},
     {"deallocate", "[-malloc|-shared|-delkey|-mmap|addr]..", "Desasigna un bloque de memoria\n -malloc tam: desasigna el bloque malloc de tamaño tam\n -shared cl: desasigna/desmapea el bloque de memoria compartda de clave cl\n -delkey cl: elimina del sistema (sin desmapear) la clave de memoria cl\n -mmap dich: desmapea el fichero mapeado fich\n addr: desasigna el bloque de memoria de la dirección addr\n"},
+    {"i-o", "i-o [read|write] [-o] f addr cnt", "Entrada/salida directa entre ficheros y memoria\n read f addr cnt: lee cnt bytes del fichero f en la direccion addr (hexadecimal)\n write [-o] f addr cnt: escribe cnt bytes desde la direccion addr en el fichero f. Con -o se puede sobrescribir\n"},
+    {"memory", "memory [-blocks|-funcs|-vars|-all|-pmap]", "Muestra informacion sobre la memoria del shell\n -blocks: muestra la lista de bloques asignados (malloc, shared y mmap)\n -funcs: muestra las direcciones de tres funciones del programa y tres de libreria\n -vars: muestra las direcciones de tres variables locales, tres estaticas y tres externas\n -all: equivale a -blocks -funcs -vars\n -pmap: muestra el mapa de memoria del proceso (usando pmap)\n"},
     {"read",  "read df addr cont",  "Transfiere cont bytes del fichero descrito por df a la direccion addr (hexadecimal)"},
     {"write", "write df addr cont", "Transfiere cont bytes desde la direccion addr (hexadecimal) al fichero descrito por df"},
     {"memfill", "memfill addr cont hcode", "Llena cont bytes a partir de la direccion addr con el byte hcode (hexadecimal)"},
@@ -986,6 +988,189 @@ static int ParsearDireccion(const char *s, void **dir)
         return 0;
     *dir = p;
     return 1;
+}
+
+//i-o and memory 
+
+#define CONT_TODO ((size_t) -1)   /* "leer el fichero entero" */
+
+/* Lee de f a p. Devuelve bytes leidos, o -1 con errno. */
+static ssize_t LeerFichero(const char *f, void *p, size_t cont)
+{
+    struct stat s;
+    ssize_t n;
+    int df, aux;
+
+    if ((df = open(f, O_RDONLY)) == -1)
+        return -1;
+    if (cont == CONT_TODO) {
+        if (fstat(df, &s) == -1) {
+            aux = errno;
+            close(df);
+            errno = aux;
+            return -1;
+        }
+        cont = (size_t) s.st_size;
+    }
+    if ((n = read(df, p, cont)) == -1) {
+        aux = errno;               /* close puede cambiar errno */
+        close(df);
+        errno = aux;
+        return -1;
+    }
+    close(df);
+    return n;
+}
+
+/* Escribe cont bytes de p en f. Devuelve bytes escritos, o -1 con errno. */
+static ssize_t EscribirFichero(const char *f, const void *p, size_t cont, int sobrescribir)
+{
+    ssize_t n;
+    int df, aux, flags = O_WRONLY | O_CREAT;
+
+    flags |= sobrescribir ? O_TRUNC : O_EXCL;
+    if ((df = open(f, flags, 0666)) == -1)
+        return -1;
+    if ((n = write(df, p, cont)) == -1) {
+        aux = errno;
+        close(df);
+        errno = aux;
+        return -1;
+    }
+    close(df);
+    return n;
+}
+
+static void IORead(char *tr[])
+{
+    void *dir;
+    size_t cont = CONT_TODO;       /* sin cnt, se lee entero (como hace ayudaP2) */
+    ssize_t n;
+
+    if (tr[0] == NULL || tr[1] == NULL) {
+        printf("uso: i-o read f addr [cnt]\n");
+        return;
+    }
+    if (!ParsearDireccion(tr[1], &dir)) {
+        printf("Direccion invalida: %s\n", tr[1]);
+        return;
+    }
+    if (tr[2] != NULL)
+        cont = (size_t) strtoul(tr[2], NULL, 10);
+
+    if ((n = LeerFichero(tr[0], dir, cont)) == -1)
+        printf("Imposible leer %s: %s\n", tr[0], strerror(errno));
+    else
+        printf("Leidos %zd bytes de %s en %p\n", n, tr[0], dir);
+}
+
+static void IOWrite(char *tr[])
+{
+    void *dir;
+    size_t cont;
+    ssize_t n;
+    int sobrescribir = 0;
+
+    if (tr[0] != NULL && !strcmp(tr[0], "-o")) {
+        sobrescribir = 1;
+        tr++;                      /* nos saltamos la opcion */
+    }
+    if (tr[0] == NULL || tr[1] == NULL || tr[2] == NULL) {
+        printf("uso: i-o write [-o] f addr cnt\n");
+        return;
+    }
+    if (!ParsearDireccion(tr[1], &dir)) {
+        printf("Direccion invalida: %s\n", tr[1]);
+        return;
+    }
+    cont = (size_t) strtoul(tr[2], NULL, 10);
+
+    if ((n = EscribirFichero(tr[0], dir, cont, sobrescribir)) == -1)
+        printf("Imposible escribir %s: %s\n", tr[0], strerror(errno));
+    else
+        printf("Escritos %zd bytes en %s desde %p\n", n, tr[0], dir);
+}
+
+void Cmd_io(char *tr[])
+{
+    if (tr[0] == NULL)
+        printf("uso: i-o [read|write] [-o] f addr cnt\n");
+    else if (!strcmp(tr[0], "read"))  IORead(tr + 1);
+    else if (!strcmp(tr[0], "write")) IOWrite(tr + 1);
+    else
+        printf("uso: i-o [read|write] [-o] f addr cnt\n");
+}
+
+/* Variables externas (globales sin static): .data las inicializadas, .bss la otra */
+int ext_ini1 = 1;
+int ext_ini2 = 2;
+int ext_noini;
+
+static void MemoriaFuncs(void)
+{
+    /* El cast a void * de un puntero a funcion no es ISO C estricto, pero
+       gcc lo acepta sin avisos con -Wall -Wextra (solo -Wpedantic se queja) */
+    printf("Funciones programa  %p, %p, %p\n",
+           (void *) Cmd_pid, (void *) Cmd_date, (void *) Cmd_list);
+    printf("Funciones libreria  %p, %p, %p\n",
+           (void *) printf, (void *) malloc, (void *) strcmp);
+}
+
+static void MemoriaVars(void)
+{
+    int aut_ini1 = 1, aut_ini2 = 2;
+    int aut_noini;                      /* solo usamos su direccion, no su valor */
+    static int est_ini = 3;
+    static int est_noini1, est_noini2;
+
+    printf("Variables locales    %p, %p, %p\n",
+           (void *) &aut_ini1, (void *) &aut_ini2, (void *) &aut_noini);
+    printf("Variables estaticas  %p, %p, %p\n",
+           (void *) &est_ini, (void *) &est_noini1, (void *) &est_noini2);
+    printf("Variables externas   %p, %p, %p\n",
+           (void *) &ext_ini1, (void *) &ext_ini2, (void *) &ext_noini);
+}
+
+static void MemoriaPmap(void)
+{
+    pid_t pid;
+    char elpid[32];
+
+    snprintf(elpid, sizeof(elpid), "%d", (int) getpid());
+    fflush(stdout);                     /* si no, el hijo hereda el buffer y lo imprime otra vez */
+    if ((pid = fork()) == -1) {
+        perror("Imposible crear proceso");
+        return;
+    }
+    if (pid == 0) {
+        execlp("pmap", "pmap", elpid, (char *) NULL);
+        perror("Imposible ejecutar pmap");   /* solo llegamos aqui si exec falla */
+        exit(255);
+    }
+    waitpid(pid, NULL, 0);
+}
+
+void Cmd_memory(char *tr[])
+{
+    int i, bloques = 0, funcs = 0, vars = 0, pmap = 0;
+
+    if (tr[0] == NULL)                  /* sin argumentos: comprueba que hace el de referencia */
+        bloques = funcs = vars = 1;
+    for (i = 0; tr[i] != NULL; i++) {
+        if      (!strcmp(tr[i], "-blocks")) bloques = 1;
+        else if (!strcmp(tr[i], "-funcs"))  funcs = 1;
+        else if (!strcmp(tr[i], "-vars"))   vars = 1;
+        else if (!strcmp(tr[i], "-all"))    bloques = funcs = vars = 1;
+        else if (!strcmp(tr[i], "-pmap"))   pmap = 1;
+        else {
+            printf("uso: memory [-blocks|-funcs|-vars|-all|-pmap]\n");
+            return;
+        }
+    }
+    if (vars)    MemoriaVars();
+    if (funcs)   MemoriaFuncs();
+    if (bloques) mostrarBloques(LISTAR_TODO);
+    if (pmap)    MemoriaPmap();
 }
 
 //read and write
