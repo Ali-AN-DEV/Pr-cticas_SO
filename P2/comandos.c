@@ -27,7 +27,7 @@
 #define OPT_HID  0x08
 #define OPT_RECA 0x10
 #define OPT_RECB 0x20
-#define BYTES_POR_LINEA 25
+#define BYTES_POR_LINEA 20
 
 static void MostrarDirActual(void)
 {
@@ -1061,7 +1061,7 @@ static void IORead(char *tr[])
     if ((n = LeerFichero(tr[0], dir, cont)) == -1)
         printf("Imposible leer %s: %s\n", tr[0], strerror(errno));
     else
-        printf("Leidos %zd bytes de %s en %p\n", n, tr[0], dir);
+        printf("leidos %zd bytes de %s en %p\n", n, tr[0], dir);
 }
 
 static void IOWrite(char *tr[])
@@ -1088,7 +1088,7 @@ static void IOWrite(char *tr[])
     if ((n = EscribirFichero(tr[0], dir, cont, sobrescribir)) == -1)
         printf("Imposible escribir %s: %s\n", tr[0], strerror(errno));
     else
-        printf("Escritos %zd bytes en %s desde %p\n", n, tr[0], dir);
+        printf("escritos %zd bytes en %s desde %p\n", n, tr[0], dir);
 }
 
 void Cmd_io(char *tr[])
@@ -1104,15 +1104,18 @@ void Cmd_io(char *tr[])
 /* Variables externas (globales sin static): .data las inicializadas, .bss la otra */
 int ext_ini1 = 1;
 int ext_ini2 = 2;
-int ext_noini;
+int ext_ini3 = 3;
+int ext_noini1;
+int ext_noini2;
+int ext_noini3;
 
 static void MemoriaFuncs(void)
 {
     /* El cast a void * de un puntero a funcion no es ISO C estricto, pero
        gcc lo acepta sin avisos con -Wall -Wextra (solo -Wpedantic se queja) */
-    printf("Funciones programa  %p, %p, %p\n",
+    printf("%-20s%18p,%18p,%18p\n", "Funciones programa",
            (void *) Cmd_pid, (void *) Cmd_date, (void *) Cmd_list);
-    printf("Funciones libreria  %p, %p, %p\n",
+    printf("%-20s%18p,%18p,%18p\n", "Funciones libreria",
            (void *) printf, (void *) malloc, (void *) strcmp);
 }
 
@@ -1120,15 +1123,19 @@ static void MemoriaVars(void)
 {
     int aut_ini1 = 1, aut_ini2 = 2;
     int aut_noini;                      /* solo usamos su direccion, no su valor */
-    static int est_ini = 3;
-    static int est_noini1, est_noini2;
+    static int est_ini1 = 1, est_ini2 = 2, est_ini3 = 3;
+    static int est_noini1, est_noini2, est_noini3;
 
-    printf("Variables locales    %p, %p, %p\n",
+    printf("%-20s%18p,%18p,%18p\n", "Variables locales",
            (void *) &aut_ini1, (void *) &aut_ini2, (void *) &aut_noini);
-    printf("Variables estaticas  %p, %p, %p\n",
-           (void *) &est_ini, (void *) &est_noini1, (void *) &est_noini2);
-    printf("Variables externas   %p, %p, %p\n",
-           (void *) &ext_ini1, (void *) &ext_ini2, (void *) &ext_noini);
+    printf("%-20s%18p,%18p,%18p\n", "Variables globales",
+           (void *) &ext_ini1, (void *) &ext_ini2, (void *) &ext_ini3);
+    printf("%-20s%18p,%18p,%18p\n", "Var (N.I.)globales",
+           (void *) &ext_noini1, (void *) &ext_noini2, (void *) &ext_noini3);
+    printf("%-20s%18p,%18p,%18p\n", "Variables estaticas",
+           (void *) &est_ini1, (void *) &est_ini2, (void *) &est_ini3);
+    printf("%-20s%18p,%18p,%18p\n", "Var (N.I.)estaticas",
+           (void *) &est_noini1, (void *) &est_noini2, (void *) &est_noini3);
 }
 
 static void MemoriaPmap(void)
@@ -1232,55 +1239,69 @@ void Cmd_memfill(char *tr[])
 {
     void *dir;
     unsigned char *p;
-    unsigned long cont, valor;
+    unsigned long cont = 128, valor = 'A';
     size_t i;
+    char *fin;
 
-    if (tr[0] == NULL || tr[1] == NULL || tr[2] == NULL) {
-        printf("uso: memfill addr cont hcode\n");
+    if (tr[0] == NULL) {
+        printf("uso: memfill addr [cont] [hcode]\n");
         return;
     }
     if (!ParsearDireccion(tr[0], &dir)) {
         printf("Direccion invalida: %s\n", tr[0]);
         return;
     }
-    cont  = strtoul(tr[1], NULL, 10);
-    valor = strtoul(tr[2], NULL, 16);
-    if (valor > 0xFF) {
-        printf("hcode debe estar entre 0x00 y 0xff\n");
-        return;
+    if (tr[1] != NULL)
+        cont = strtoul(tr[1], NULL, 10);
+    if (tr[1] != NULL && tr[2] != NULL) {
+        if (strlen(tr[2]) == 3 && tr[2][0] == '\'' && tr[2][2] == '\'')
+            valor = (unsigned char) tr[2][1];
+        else {
+            valor = strtoul(tr[2], &fin, 16);
+            if (*fin != '\0' || valor > 0xFF) {
+                printf("hcode debe estar entre 0x00 y 0xff\n");
+                return;
+            }
+        }
     }
-    //El la funcion de LlenarMemoria de ayudaP2 
+    printf("Llenando %lu bytes de memoria con el byte %2c(%02lx) a partir de la direccion %p\n",
+           cont, isprint((int) valor) ? (int) valor : ' ', valor, dir);
+    //El la funcion de LlenarMemoria de ayudaP2
     p = (unsigned char *) dir;
     for (i = 0; i < cont; i++)
         p[i] = (unsigned char) valor;
 }
 
-#define BYTES_POR_LINEA 25
-
 void Cmd_memdump(char *tr[])
 {
     void *dir;
     const unsigned char *p;
-    size_t cont, i, j;
+    size_t cont = 20, i, j;
 
-    if (tr[0] == NULL || tr[1] == NULL) {
-        printf("uso: memdump addr cont\n");
+    if (tr[0] == NULL) {
+        printf("uso: memdump addr [cont]\n");
         return;
     }
     if (!ParsearDireccion(tr[0], &dir)) {
         printf("Direccion invalida: %s\n", tr[0]);
         return;
     }
-    cont = (size_t) strtoul(tr[1], NULL, 10);
+    if (tr[1] != NULL)
+        cont = (size_t) strtoul(tr[1], NULL, 10);
     p = (const unsigned char *) dir;
 
     printf("Volcando %zu bytes desde la direccion %p\n", cont, dir);
     for (i = 0; i < cont; i += BYTES_POR_LINEA) {
+        printf("%p-> ", (void *) (p + i));
+        for (j = i; j < i + BYTES_POR_LINEA && j < cont; j++) {
+            if      (p[j] == '\n') printf(" \\n");
+            else if (p[j] == '\t') printf(" \\t");
+            else if (p[j] == '\r') printf(" \\r");
+            else printf("  %c", isprint(p[j]) ? p[j] : ' ');
+        }
+        printf("\n%p-> ", (void *) (p + i));
         for (j = i; j < i + BYTES_POR_LINEA && j < cont; j++)
-            printf("%3c", isprint(p[j]) ? p[j] : ' ');
-        printf("\n");
-        for (j = i; j < i + BYTES_POR_LINEA && j < cont; j++)
-            printf("%02x ", p[j]);
+            printf(" %02x", p[j]);
         printf("\n");
     }
 }
